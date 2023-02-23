@@ -1,3 +1,6 @@
+mod complex;
+
+use crate::complex::Complex;
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatedHDC, EndPaint, FillRect,
     SelectObject, SetPixel, COLOR_WINDOW, HBRUSH, PAINTSTRUCT, SRCCOPY,
@@ -34,8 +37,8 @@ fn main() -> Result<()> {
             WS_OVERLAPPEDWINDOW | WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
+            900,
+            600,
             None,
             None,
             instance,
@@ -90,14 +93,55 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
 }
 
 unsafe fn paint(ctx: CreatedHDC, paint_rect: &RECT, width: i32, height: i32) {
+    let w_f64 = width as f64;
+    let h_f64 = height as f64;
+
+    let third_width = width / 3;
+    let half_height = height / 2;
+
     FillRect(ctx, paint_rect, HBRUSH(COLOR_WINDOW.0 as isize));
     for x in paint_rect.left..=paint_rect.right {
-        let value_x = x as f64 / width as f64;
+        let value_x = (x - third_width - third_width) as f64 / w_f64 * 3.0;
         for y in paint_rect.top..=paint_rect.bottom {
-            let value_y = (y as f64) / (height) as f64;
-            let color = blend(value_y, 0x0000FF00, blend(value_x, 0x000000FF, 0x00FF0000));
+            let value_y = (y - half_height) as f64 / h_f64 * 2.0;
+
+            let c = Complex::new(value_x, value_y);
+            let mut z = c;
+
+            let max_iter = 250;
+            let mut iter = 0;
+            let mut inside = true;
+            loop {
+                let new_z = z * z + c;
+                if new_z.abs() >= 2.0 {
+                    inside = false;
+                    break;
+                }
+
+                z = new_z;
+                if iter > max_iter {
+                    break;
+                }
+                iter += 1;
+            }
+
+            let color = if inside {
+                0x00000000
+            } else {
+                color_iter(max_iter, iter)
+            };
             SetPixel(ctx, x, y, COLORREF(color));
         }
+    }
+}
+
+fn color_iter(max_iter: i32, iter: i32) -> u32 {
+    if iter > max_iter / 2 {
+        let it_rel = ((iter - (max_iter / 2)) as f64) / ((max_iter / 2) as f64);
+        blend(it_rel, 0x0000FFFF, 0x00FF0000)
+    } else {
+        let it_rel = (iter as f64) / ((max_iter / 2) as f64);
+        blend(it_rel, 0x00FF0000, 0x00FFFFFF)
     }
 }
 
