@@ -1,5 +1,7 @@
+mod color;
 mod complex;
 
+use crate::color::Color;
 use crate::complex::Complex;
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatedHDC, EndPaint, FillRect,
@@ -93,22 +95,13 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
 }
 
 unsafe fn paint(ctx: CreatedHDC, paint_rect: &RECT, width: i32, height: i32) {
-    let w_f64 = width as f64;
-    let h_f64 = height as f64;
-
-    let third_width = width / 3;
-    let half_height = height / 2;
-
     FillRect(ctx, paint_rect, HBRUSH(COLOR_WINDOW.0 as isize));
     for x in paint_rect.left..=paint_rect.right {
-        let value_x = (x - third_width - third_width) as f64 / w_f64 * 3.0;
         for y in paint_rect.top..=paint_rect.bottom {
-            let value_y = (y - half_height) as f64 / h_f64 * 2.0;
-
-            let c = Complex::new(value_x, value_y);
+            let c = translate(width, height, x, y);
             let mut z = c;
 
-            let max_iter = 250;
+            let max_iter = 400;
             let mut iter = 0;
             let mut inside = true;
             loop {
@@ -126,42 +119,37 @@ unsafe fn paint(ctx: CreatedHDC, paint_rect: &RECT, width: i32, height: i32) {
             }
 
             let color = if inside {
-                0x00000000
+                Color::BLACK
             } else {
-                color_iter(max_iter, iter)
+                color_iter(iter)
             };
-            SetPixel(ctx, x, y, COLORREF(color));
+            SetPixel(ctx, x, y, COLORREF(color.into()));
         }
     }
 }
 
-fn color_iter(max_iter: i32, iter: i32) -> u32 {
-    if iter > max_iter / 2 {
-        let it_rel = ((iter - (max_iter / 2)) as f64) / ((max_iter / 2) as f64);
-        blend(it_rel, 0x0000FFFF, 0x00FF0000)
+fn translate(width: i32, height: i32, x: i32, y: i32) -> Complex {
+    let third_width = width / 3;
+    let half_height = height / 2;
+
+    let value_x = (x - third_width - third_width) as f64 / width as f64 * 3.0;
+    let value_y = (y - half_height) as f64 / height as f64 * 2.0;
+
+    (Complex::new(value_x, value_y) / 6.0) + Complex::new(-0.75, -0.25)
+}
+
+fn color_iter(iter: i32) -> Color {
+    if iter <= 100 {
+        let it_rel = (iter as f64) / 100.0;
+        Color::blend(Color::BLUE, Color::WHITE, it_rel)
+    } else if iter <= 200 {
+        let it_rel = (iter - 100) as f64 / 100.0;
+        Color::blend(Color::WHITE, Color::RED, it_rel)
+    } else if iter <= 300 {
+        let it_rel = (iter - 200) as f64 / 100.0;
+        Color::blend(Color::RED, Color::YELLOW, it_rel)
     } else {
-        let it_rel = (iter as f64) / ((max_iter / 2) as f64);
-        blend(it_rel, 0x00FF0000, 0x00FFFFFF)
+        let it_rel = (iter - 300) as f64 / 100.0;
+        Color::blend(Color::YELLOW, Color::CYAN, it_rel)
     }
-}
-
-fn blend(value: f64, from: u32, to: u32) -> u32 {
-    let red1 = from & 0xFF;
-    let red2 = to & 0xFF;
-    let red = blend_comp(value, red1, red2);
-
-    let green1 = (from >> 8) & 0xFF;
-    let green2 = (to >> 8) & 0xFF;
-    let green = blend_comp(value, green1, green2);
-
-    let blue1 = (from >> 16) & 0xFF;
-    let blue2 = (to >> 16) & 0xFF;
-    let blue = blend_comp(value, blue1, blue2);
-
-    let output = red + (green << 8) + (blue << 16);
-    output
-}
-
-fn blend_comp(value: f64, c1: u32, c2: u32) -> u32 {
-    (c1 as f64 * (1.0 - value) + (c2 as f64 * value)).round() as u32
 }

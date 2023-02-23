@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul};
+use std::ops::{Add, Div, Mul};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Complex {
@@ -23,6 +23,14 @@ impl Mul for Complex {
         let real = self.real * rhs.real - self.imag * rhs.imag;
         let imag = self.real * rhs.imag + self.imag * rhs.real;
         Self::new(real, imag)
+    }
+}
+
+impl Div<f64> for Complex {
+    type Output = Complex;
+
+    fn div(self, rhs: f64) -> Self::Output {
+        Self::new(self.real / rhs, self.imag / rhs)
     }
 }
 
