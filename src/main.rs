@@ -1,8 +1,13 @@
+#![feature(test)]
+
 mod color;
 mod complex;
+mod dim;
 
 use crate::color::Color;
 use crate::complex::Complex;
+use crate::dim::Dim;
+use rayon::prelude::*;
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatedHDC, EndPaint,
     SelectObject, SetPixel, PAINTSTRUCT, SRCCOPY,
@@ -76,7 +81,7 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                 let back_buffer = CreateCompatibleBitmap(hdc, width, height);
                 SelectObject(bm_dc, back_buffer);
 
-                paint(bm_dc, &ps.rcPaint, width, height);
+                paint(bm_dc, Dim::new(width, height));
 
                 BitBlt(hdc, 0, 0, width, height, bm_dc, 0, 0, SRCCOPY);
 
@@ -94,37 +99,55 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
     }
 }
 
-unsafe fn paint(ctx: CreatedHDC, paint_rect: &RECT, width: i32, height: i32) {
-    for x in paint_rect.left..=paint_rect.right {
-        for y in paint_rect.top..=paint_rect.bottom {
-            let c = translate(width, height, x, y);
-            let mut z = c;
+unsafe fn paint(ctx: CreatedHDC, dim: Dim) {
+    let pixels = calculate_pixels_par(dim);
 
-            let max_iter = 400;
-            let mut iter = 0;
-            let mut inside = true;
-            loop {
-                let new_z = z * z + c;
-                if new_z.abs() >= 2.0 {
-                    inside = false;
-                    break;
-                }
-
-                z = new_z;
-                if iter > max_iter {
-                    break;
-                }
-                iter += 1;
-            }
-
-            let color = if inside {
-                Color::BLACK
-            } else {
-                color_iter(iter)
-            };
-            SetPixel(ctx, x, y, COLORREF(color.into()));
-        }
+    for (x, y, color) in pixels {
+        SetPixel(ctx, x, y, COLORREF(color.into()));
     }
+}
+
+#[allow(dead_code)]
+fn calculate_pixels(dim: Dim) -> Vec<(i32, i32, Color)> {
+    dim.into_iter()
+        .map(|(x, y)| calculate_pixel(&dim, x, y))
+        .collect::<Vec<_>>()
+}
+
+fn calculate_pixels_par(dim: Dim) -> Vec<(i32, i32, Color)> {
+    dim.into_par_iter()
+        .map(|(x, y)| calculate_pixel(&dim, x, y))
+        .collect::<Vec<_>>()
+}
+
+fn calculate_pixel(dim: &Dim, x: i32, y: i32) -> (i32, i32, Color) {
+    let c = translate(dim.width, dim.height, x, y);
+    let mut z = c;
+
+    let max_iter = 400;
+    let mut iter = 0;
+    let mut inside = true;
+    loop {
+        let new_z = z * z + c;
+        if new_z.abs() >= 2.0 {
+            inside = false;
+            break;
+        }
+
+        z = new_z;
+        if iter > max_iter {
+            break;
+        }
+        iter += 1;
+    }
+
+    let color = if inside {
+        Color::BLACK
+    } else {
+        color_iter(iter)
+    };
+
+    (x, y, color)
 }
 
 fn translate(width: i32, height: i32, x: i32, y: i32) -> Complex {
@@ -150,5 +173,24 @@ fn color_iter(iter: i32) -> Color {
     } else {
         let it_rel = (iter - 300) as f64 / 100.0;
         Color::blend(Color::YELLOW, Color::CYAN, it_rel)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate test;
+
+    use crate::dim::Dim;
+    use crate::{calculate_pixels, calculate_pixels_par};
+    use test::Bencher;
+
+    #[bench]
+    fn bench_pixel_calc(b: &mut Bencher) {
+        b.iter(|| calculate_pixels(Dim::new(60, 40)))
+    }
+
+    #[bench]
+    fn bench_pixel_calc_par(b: &mut Bencher) {
+        b.iter(|| calculate_pixels_par(Dim::new(60, 40)))
     }
 }
