@@ -68,12 +68,17 @@ fn main() -> Result<()> {
 extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
         match message {
+            WM_SIZE => handle_size(window),
             WM_CREATE => handle_create(window),
             WM_PAINT => handle_paint(window),
             WM_DESTROY => handle_destroy(window),
             _ => DefWindowProcA(window, message, wparam, lparam),
         }
     }
+}
+
+fn handle_size(window: HWND) -> LRESULT {
+    handle_create(window)
 }
 
 fn handle_create(window: HWND) -> LRESULT {
@@ -193,7 +198,7 @@ fn translate(width: i32, height: i32, x: i32, y: i32) -> Complex {
     let value_x = (x - third_width - third_width) as f64 / width as f64 * 3.0;
     let value_y = (y - half_height) as f64 / height as f64 * 2.0;
 
-    (Complex::new(value_x, value_y) / 6.0) + Complex::new(-0.75, -0.25)
+    Complex::new(value_x, value_y)
 }
 
 fn color_iter(iter: i32) -> Color {
