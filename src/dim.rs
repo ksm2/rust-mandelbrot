@@ -104,7 +104,6 @@ impl<'a> From<DimParallelIterator<'a>> for DimProducer<'a> {
 
 pub struct DimIterator<'a> {
     dim: &'a Dim,
-    from: usize,
     offset: usize,
     offset_back: usize,
 }
@@ -115,12 +114,10 @@ impl<'a> DimIterator<'a> {
     }
 
     fn with_bounds(dim: &'a Dim, from: usize, to: usize) -> Self {
-        let offset_back = to - from;
         Self {
             dim,
-            from,
-            offset: 0,
-            offset_back,
+            offset: from,
+            offset_back: to,
         }
     }
 }
@@ -133,11 +130,11 @@ impl<'a> Iterator for DimIterator<'a> {
             return None;
         }
 
-        let index = (self.from + self.offset) as i32;
-        let x = index / (self.dim.height);
-        let y = index % (self.dim.height);
+        let index = self.offset;
+        let x = index / self.dim.height as usize;
+        let y = index % self.dim.height as usize;
         self.offset += 1;
-        Some((x, y))
+        Some((x as i32, y as i32))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -157,10 +154,10 @@ impl<'a> DoubleEndedIterator for DimIterator<'a> {
             return None;
         }
 
-        let index = (self.from + self.offset_back) as i32;
-        let x = index / (self.dim.height);
-        let y = index % (self.dim.height);
-        Some((x, y))
+        let index = self.offset_back;
+        let x = index / self.dim.height as usize;
+        let y = index % self.dim.height as usize;
+        Some((x as i32, y as i32))
     }
 }
 
