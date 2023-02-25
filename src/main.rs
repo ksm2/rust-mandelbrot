@@ -195,8 +195,10 @@ fn translate(width: i32, height: i32, x: i32, y: i32) -> Complex {
     let third_width = width / 3;
     let half_height = height / 2;
 
-    let value_x = (x - third_width - third_width) as f64 / width as f64 * 3.0;
-    let value_y = (y - half_height) as f64 / height as f64 * 2.0;
+    let unit = i32::min(third_width, half_height) as f64;
+
+    let value_x = (x - third_width - third_width) as f64 / unit;
+    let value_y = (y - half_height) as f64 / unit;
 
     Complex::new(value_x, value_y)
 }
