@@ -68,85 +68,92 @@ fn main() -> Result<()> {
 extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
         match message {
-            WM_ERASEBKGND => LRESULT(1),
-            WM_CREATE => {
-                println!("WM_CREATE");
-
-                let mut r = RECT::default();
-                GetClientRect(window, &mut r);
-                let dim = Dim::new(r.right - r.left, r.bottom - r.top);
-                let mut bitmap = Win32Bitmap::new(dim);
-
-                // Draw in the background
-                paint(&mut bitmap);
-                bitmap.swap();
-                bitmap.clear();
-
-                // Store bitmap on window handle
-                set_bitmap(window, bitmap);
-
-                LRESULT(0)
-            }
-            WM_PAINT => {
-                println!("WM_PAINT");
-                let bitmap = get_bitmap(window).as_mut().unwrap();
-
-                let mut ps = PAINTSTRUCT::default();
-                let hdc = BeginPaint(window, &mut ps);
-                let bm_dc = CreateCompatibleDC(hdc);
-                let old_bmp = SelectObject(bm_dc, bitmap.bitmap());
-
-                let width = bitmap.dim.width;
-                let height = bitmap.dim.height;
-                BitBlt(hdc, 0, 0, width, height, bm_dc, 0, 0, SRCCOPY);
-
-                SelectObject(hdc, old_bmp);
-                DeleteDC(bm_dc);
-                EndPaint(window, &ps);
-
-                LRESULT(0)
-            }
-            WM_DESTROY => {
-                println!("WM_DESTROY");
-                let bitmap = Box::from_raw(get_bitmap(window));
-                drop(bitmap);
-                PostQuitMessage(0);
-                LRESULT(0)
-            }
+            WM_CREATE => handle_create(window),
+            WM_PAINT => handle_paint(window),
+            WM_DESTROY => handle_destroy(window),
             _ => DefWindowProcA(window, message, wparam, lparam),
         }
     }
 }
 
-unsafe fn get_bitmap(window: HWND) -> *mut Win32Bitmap {
-    let bitmap = GetWindowLongPtrA(window, GWLP_USERDATA);
-    bitmap as *mut Win32Bitmap
+fn handle_create(window: HWND) -> LRESULT {
+    let dim = get_window_dimensions(window);
+    let mut bitmap = Win32Bitmap::new(dim);
+
+    // Draw in the background
+    calculate_pixels_par(&mut bitmap);
+    bitmap.swap();
+    bitmap.clear();
+
+    // Store bitmap on window handle
+    set_bitmap(window, bitmap);
+
+    LRESULT(0)
 }
 
-unsafe fn set_bitmap(window: HWND, bitmap: Win32Bitmap) {
-    let user_data = Box::into_raw(Box::new(bitmap)) as isize;
-    SetWindowLongPtrA(window, GWLP_USERDATA, user_data);
+unsafe fn handle_paint(window: HWND) -> LRESULT {
+    let bitmap = get_bitmap(window).as_mut().unwrap();
+
+    let mut ps = PAINTSTRUCT::default();
+    let hdc = BeginPaint(window, &mut ps);
+    let bm_dc = CreateCompatibleDC(hdc);
+    let old_bmp = SelectObject(bm_dc, bitmap.bitmap());
+
+    let width = bitmap.dim.width;
+    let height = bitmap.dim.height;
+    BitBlt(hdc, 0, 0, width, height, bm_dc, 0, 0, SRCCOPY);
+
+    SelectObject(hdc, old_bmp);
+    DeleteDC(bm_dc);
+    EndPaint(window, &ps);
+
+    LRESULT(0)
 }
 
-fn paint<B: Bitmap>(bitmap: &mut B) {
-    let pixels = calculate_pixels_par(bitmap.dim());
+unsafe fn handle_destroy(window: HWND) -> LRESULT {
+    let bitmap = Box::from_raw(get_bitmap(window));
+    drop(bitmap);
+    PostQuitMessage(0);
+    LRESULT(0)
+}
 
-    for (x, y, color) in pixels {
-        bitmap.set_pixel(x, y, color);
+fn get_window_dimensions(window: HWND) -> Dim {
+    unsafe {
+        let mut r = RECT::default();
+        GetClientRect(window, &mut r);
+        Dim::new(r.right - r.left, r.bottom - r.top)
+    }
+}
+
+fn get_bitmap(window: HWND) -> *mut Win32Bitmap {
+    unsafe {
+        let bitmap = GetWindowLongPtrA(window, GWLP_USERDATA);
+        bitmap as *mut Win32Bitmap
+    }
+}
+
+fn set_bitmap(window: HWND, bitmap: Win32Bitmap) {
+    unsafe {
+        let user_data = Box::into_raw(Box::new(bitmap)) as isize;
+        SetWindowLongPtrA(window, GWLP_USERDATA, user_data);
     }
 }
 
 #[allow(dead_code)]
-fn calculate_pixels(dim: Dim) -> Vec<(i32, i32, Color)> {
+fn calculate_pixels<B: Bitmap>(bmp: &mut B) {
+    let dim = bmp.dim();
     dim.into_iter()
         .map(|(x, y)| calculate_pixel(&dim, x, y))
-        .collect::<Vec<_>>()
+        .for_each(|(x, y, color)| bmp.set_pixel(x, y, color));
 }
 
-fn calculate_pixels_par(dim: Dim) -> Vec<(i32, i32, Color)> {
+fn calculate_pixels_par<B: Bitmap>(bmp: &mut B) {
+    let dim = bmp.dim();
     dim.into_par_iter()
         .map(|(x, y)| calculate_pixel(&dim, x, y))
         .collect::<Vec<_>>()
+        .into_iter()
+        .for_each(|(x, y, color)| bmp.set_pixel(x, y, color));
 }
 
 fn calculate_pixel(dim: &Dim, x: i32, y: i32) -> (i32, i32, Color) {
@@ -209,17 +216,19 @@ fn color_iter(iter: i32) -> Color {
 mod tests {
     extern crate test;
 
-    use crate::dim::Dim;
+    use crate::bitmap::InMemBitmap;
     use crate::{calculate_pixels, calculate_pixels_par};
     use test::Bencher;
 
     #[bench]
     fn bench_pixel_calc(b: &mut Bencher) {
-        b.iter(|| calculate_pixels(Dim::new(60, 40)))
+        let mut bmp = InMemBitmap::<60, 40>::new();
+        b.iter(|| calculate_pixels(&mut bmp))
     }
 
     #[bench]
     fn bench_pixel_calc_par(b: &mut Bencher) {
-        b.iter(|| calculate_pixels_par(Dim::new(60, 40)))
+        let mut bmp = InMemBitmap::<60, 40>::new();
+        b.iter(|| calculate_pixels_par(&mut bmp))
     }
 }
