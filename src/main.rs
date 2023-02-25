@@ -1,16 +1,19 @@
 #![feature(test)]
 
+mod bitmap;
 mod color;
 mod complex;
 mod dim;
+mod win32;
 
+use crate::bitmap::Bitmap;
 use crate::color::Color;
 use crate::complex::Complex;
 use crate::dim::Dim;
+use crate::win32::Win32Bitmap;
 use rayon::prelude::*;
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatedHDC, EndPaint,
-    SelectObject, SetPixel, PAINTSTRUCT, SRCCOPY,
+    BeginPaint, BitBlt, CreateCompatibleDC, DeleteDC, EndPaint, SelectObject, PAINTSTRUCT, SRCCOPY,
 };
 use windows::{
     core::*, Win32::Foundation::*, Win32::System::LibraryLoader::GetModuleHandleA,
@@ -66,31 +69,47 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
     unsafe {
         match message {
             WM_ERASEBKGND => LRESULT(1),
+            WM_CREATE => {
+                println!("WM_CREATE");
+
+                let mut r = RECT::default();
+                GetClientRect(window, &mut r);
+                let dim = Dim::new(r.right - r.left, r.bottom - r.top);
+                let mut bitmap = Win32Bitmap::new(dim);
+
+                // Draw in the background
+                paint(&mut bitmap);
+                bitmap.swap();
+                bitmap.clear();
+
+                // Store bitmap on window handle
+                set_bitmap(window, bitmap);
+
+                LRESULT(0)
+            }
             WM_PAINT => {
                 println!("WM_PAINT");
+                let bitmap = get_bitmap(window).as_mut().unwrap();
 
                 let mut ps = PAINTSTRUCT::default();
                 let hdc = BeginPaint(window, &mut ps);
-
-                let mut rect = RECT::default();
-                GetClientRect(window, &mut rect);
-                let width = rect.right;
-                let height = rect.bottom;
-
                 let bm_dc = CreateCompatibleDC(hdc);
-                let back_buffer = CreateCompatibleBitmap(hdc, width, height);
-                SelectObject(bm_dc, back_buffer);
+                let old_bmp = SelectObject(bm_dc, bitmap.bitmap());
 
-                paint(bm_dc, Dim::new(width, height));
-
+                let width = bitmap.dim.width;
+                let height = bitmap.dim.height;
                 BitBlt(hdc, 0, 0, width, height, bm_dc, 0, 0, SRCCOPY);
 
+                SelectObject(hdc, old_bmp);
+                DeleteDC(bm_dc);
                 EndPaint(window, &ps);
 
                 LRESULT(0)
             }
             WM_DESTROY => {
                 println!("WM_DESTROY");
+                let bitmap = Box::from_raw(get_bitmap(window));
+                drop(bitmap);
                 PostQuitMessage(0);
                 LRESULT(0)
             }
@@ -99,11 +118,21 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
     }
 }
 
-unsafe fn paint(ctx: CreatedHDC, dim: Dim) {
-    let pixels = calculate_pixels_par(dim);
+unsafe fn get_bitmap(window: HWND) -> *mut Win32Bitmap {
+    let bitmap = GetWindowLongPtrA(window, GWLP_USERDATA);
+    bitmap as *mut Win32Bitmap
+}
+
+unsafe fn set_bitmap(window: HWND, bitmap: Win32Bitmap) {
+    let user_data = Box::into_raw(Box::new(bitmap)) as isize;
+    SetWindowLongPtrA(window, GWLP_USERDATA, user_data);
+}
+
+fn paint<B: Bitmap>(bitmap: &mut B) {
+    let pixels = calculate_pixels_par(bitmap.dim());
 
     for (x, y, color) in pixels {
-        SetPixel(ctx, x, y, COLORREF(color.into()));
+        bitmap.set_pixel(x, y, color);
     }
 }
 

@@ -97,6 +97,6 @@ impl From<Color> for u32 {
         let green = (c.green * 255.0) as u32;
         let blue = (c.blue * 255.0) as u32;
 
-        red + (green << 8) + (blue << 16)
+        (red << 16) + (green << 8) + blue
     }
 }

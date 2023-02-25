@@ -1,6 +1,7 @@
 use rayon::iter::plumbing::{bridge, Consumer, Producer, ProducerCallback, UnindexedConsumer};
 use rayon::prelude::*;
 
+#[derive(Debug, Clone, Copy)]
 pub struct Dim {
     pub width: i32,
     pub height: i32,
