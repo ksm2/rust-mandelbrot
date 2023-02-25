@@ -4,8 +4,8 @@ mod complex;
 use crate::color::Color;
 use crate::complex::Complex;
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatedHDC, EndPaint, FillRect,
-    SelectObject, SetPixel, COLOR_WINDOW, HBRUSH, PAINTSTRUCT, SRCCOPY,
+    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatedHDC, EndPaint,
+    SelectObject, SetPixel, PAINTSTRUCT, SRCCOPY,
 };
 use windows::{
     core::*, Win32::Foundation::*, Win32::System::LibraryLoader::GetModuleHandleA,
@@ -95,7 +95,6 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
 }
 
 unsafe fn paint(ctx: CreatedHDC, paint_rect: &RECT, width: i32, height: i32) {
-    FillRect(ctx, paint_rect, HBRUSH(COLOR_WINDOW.0 as isize));
     for x in paint_rect.left..=paint_rect.right {
         for y in paint_rect.top..=paint_rect.bottom {
             let c = translate(width, height, x, y);
